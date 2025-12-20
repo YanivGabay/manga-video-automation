@@ -165,18 +165,20 @@ def generate_subtitle_style() -> str:
     """Generate ASS subtitle style for manga narration.
 
     Style features:
-    - Modern font (Arial Bold as fallback-safe choice)
-    - Semi-transparent dark rounded background box
-    - White text (#FAFAFA) with black outline
-    - Drop shadow for depth
+    - Modern font (Arial Bold)
+    - Gradient-like text with soft glow effect (using blur)
+    - Double outline for depth (inner white glow + outer black)
+    - Semi-transparent dark background box with blur
     - Bottom-center positioning
-    - Good size for mobile viewing
+    - Optimized for 1080x1920 vertical video (mobile)
     """
     # ASS color format: &HAABBGGRR (alpha, blue, green, red)
-    # PrimaryColour: Off-white text (#FAFAFA = &H00FAFAFA)
-    # OutlineColour: Black outline
-    # BackColour: Semi-transparent black background (BorderStyle=3 enables box)
-    # Shadow: 2px for subtle depth
+    # Using BorderStyle=4 for opaque box, but we'll use 1 for outline+shadow
+    # and apply blur via override tags for modern look
+    #
+    # We create multiple styles:
+    # - NarrationGlow: Background glow layer (rendered first)
+    # - Narration: Main text layer with outline
 
     return """[Script Info]
 Title: Manga Narration
@@ -189,8 +191,9 @@ PlayResY: 1920
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Arial,52,&H00FAFAFA,&H000000FF,&H00000000,&HC0000000,-1,0,0,0,100,100,0,0,3,3,2,2,60,60,100,1
-Style: Narration,Arial,48,&H00FAFAFA,&H000000FF,&H00000000,&HC0000000,-1,0,0,0,100,100,1,0,3,3,2,2,80,80,120,1
+Style: Default,Arial,52,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,0,2,60,60,100,1
+Style: Narration,Arial,50,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0.5,0,1,4,0,2,80,80,100,1
+Style: NarrationGlow,Arial,50,&H00000000,&H000000FF,&H60000000,&H00000000,-1,0,0,0,100,100,0.5,0,1,8,0,2,80,80,100,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -211,32 +214,66 @@ def create_subtitle_event(
     end: float,
     text: str,
     style: str = "Narration",
-    fade_in_ms: int = 300,
-    fade_out_ms: int = 200
+    fade_in_ms: int = 200,
+    fade_out_ms: int = 150
 ) -> str:
-    """Create a single ASS subtitle event with fade animation and text wrapping.
+    """Create ASS subtitle events with glow effect and animations.
+
+    Creates two dialogue lines:
+    1. Background glow layer (blurred, semi-transparent)
+    2. Main text layer with crisp outline
+
+    Effects applied:
+    - Fade in/out animation
+    - Subtle blur on glow layer for soft shadow
+    - Scale pop-in animation (102% -> 100%)
 
     Args:
         start: Start time in seconds
         end: End time in seconds
         text: Subtitle text
-        style: ASS style name
+        style: ASS style name (base style, glow style auto-derived)
         fade_in_ms: Fade in duration in milliseconds
         fade_out_ms: Fade out duration in milliseconds
 
     Returns:
-        ASS dialogue line
+        Two ASS dialogue lines (glow layer + main layer)
     """
     start_ts = format_time_ass(start)
     end_ts = format_time_ass(end)
 
     # Escape special characters
-    text = text.replace("\\", "\\\\").replace("{", "\\{").replace("}", "\\}")
+    escaped_text = text.replace("\\", "\\\\").replace("{", "\\{").replace("}", "\\}")
 
     # Wrap text for better readability (max 42 chars per line, 2 lines max)
-    text = wrap_text(text)
+    wrapped_text = wrap_text(escaped_text)
 
-    # Add fade effect: \fad(fade_in_ms, fade_out_ms)
-    fade_effect = f"{{\\fad({fade_in_ms},{fade_out_ms})}}"
+    # Animation effects
+    # \fad - fade in/out
+    # \blur - gaussian blur for soft glow
+    # \t(\fscx\fscy) - scale animation (pop-in effect)
+    # \bord - border/outline size
 
-    return f"Dialogue: 0,{start_ts},{end_ts},{style},,0,0,0,,{fade_effect}{text}"
+    # Glow layer: blurred background shadow for depth
+    glow_effects = (
+        f"{{\\fad({fade_in_ms},{fade_out_ms})"
+        f"\\blur6"  # Heavy blur for soft glow
+        f"\\bord8"  # Thick border that becomes the glow
+        f"}}"
+    )
+
+    # Main text layer: crisp text with outline and subtle pop-in
+    pop_duration = min(150, fade_in_ms)  # Pop animation duration
+    main_effects = (
+        f"{{\\fad({fade_in_ms},{fade_out_ms})"
+        f"\\blur0.5"  # Very subtle blur for anti-aliasing
+        f"\\fscx102\\fscy102"  # Start slightly larger
+        f"\\t(0,{pop_duration},\\fscx100\\fscy100)"  # Animate to normal size
+        f"}}"
+    )
+
+    # Layer 0 = glow (rendered behind), Layer 1 = main text (rendered on top)
+    glow_line = f"Dialogue: 0,{start_ts},{end_ts},{style}Glow,,0,0,0,,{glow_effects}{wrapped_text}"
+    main_line = f"Dialogue: 1,{start_ts},{end_ts},{style},,0,0,0,,{main_effects}{wrapped_text}"
+
+    return f"{glow_line}\n{main_line}"
