@@ -122,19 +122,61 @@ def get_filter_for_mood(mood: str) -> str:
     return filters.get(mood, "eq=contrast=1.0:brightness=0.0:saturation=1.0")
 
 
+def wrap_text(text: str, max_chars: int = 42) -> str:
+    """Wrap text to multiple lines for better readability.
+
+    Args:
+        text: The text to wrap
+        max_chars: Maximum characters per line (default 42 for subtitle readability)
+
+    Returns:
+        Text with \\N line breaks for ASS format
+    """
+    words = text.split()
+    lines = []
+    current_line = []
+    current_length = 0
+
+    for word in words:
+        word_length = len(word)
+        # +1 for space between words
+        if current_length + word_length + (1 if current_line else 0) <= max_chars:
+            current_line.append(word)
+            current_length += word_length + (1 if len(current_line) > 1 else 0)
+        else:
+            if current_line:
+                lines.append(" ".join(current_line))
+            current_line = [word]
+            current_length = word_length
+
+    if current_line:
+        lines.append(" ".join(current_line))
+
+    # Limit to 2 lines max for readability
+    if len(lines) > 2:
+        # Combine into 2 lines
+        mid = len(lines) // 2
+        lines = [" ".join(lines[:mid+1]), " ".join(lines[mid+1:])]
+
+    return "\\N".join(lines)
+
+
 def generate_subtitle_style() -> str:
     """Generate ASS subtitle style for manga narration.
 
     Style features:
-    - Semi-transparent dark background box
-    - White text with black outline
+    - Modern font (Arial Bold as fallback-safe choice)
+    - Semi-transparent dark rounded background box
+    - White text (#FAFAFA) with black outline
+    - Drop shadow for depth
     - Bottom-center positioning
     - Good size for mobile viewing
     """
     # ASS color format: &HAABBGGRR (alpha, blue, green, red)
-    # PrimaryColour: White text
+    # PrimaryColour: Off-white text (#FAFAFA = &H00FAFAFA)
     # OutlineColour: Black outline
     # BackColour: Semi-transparent black background (BorderStyle=3 enables box)
+    # Shadow: 2px for subtle depth
 
     return """[Script Info]
 Title: Manga Narration
@@ -147,8 +189,8 @@ PlayResY: 1920
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Arial,48,&H00FFFFFF,&H000000FF,&H00000000,&HB0000000,-1,0,0,0,100,100,0,0,3,3,0,2,60,60,120,1
-Style: Narration,Arial,44,&H00FFFFFF,&H000000FF,&H00000000,&HC0000000,-1,0,0,0,100,100,1,0,3,2,0,2,80,80,150,1
+Style: Default,Arial,52,&H00FAFAFA,&H000000FF,&H00000000,&HC0000000,-1,0,0,0,100,100,0,0,3,3,2,2,60,60,100,1
+Style: Narration,Arial,48,&H00FAFAFA,&H000000FF,&H00000000,&HC0000000,-1,0,0,0,100,100,1,0,3,3,2,2,80,80,120,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -168,12 +210,33 @@ def create_subtitle_event(
     start: float,
     end: float,
     text: str,
-    style: str = "Narration"
+    style: str = "Narration",
+    fade_in_ms: int = 300,
+    fade_out_ms: int = 200
 ) -> str:
-    """Create a single ASS subtitle event"""
+    """Create a single ASS subtitle event with fade animation and text wrapping.
+
+    Args:
+        start: Start time in seconds
+        end: End time in seconds
+        text: Subtitle text
+        style: ASS style name
+        fade_in_ms: Fade in duration in milliseconds
+        fade_out_ms: Fade out duration in milliseconds
+
+    Returns:
+        ASS dialogue line
+    """
     start_ts = format_time_ass(start)
     end_ts = format_time_ass(end)
-    # Escape special characters and handle newlines
+
+    # Escape special characters
     text = text.replace("\\", "\\\\").replace("{", "\\{").replace("}", "\\}")
-    text = text.replace("\n", "\\N")
-    return f"Dialogue: 0,{start_ts},{end_ts},{style},,0,0,0,,{text}"
+
+    # Wrap text for better readability (max 42 chars per line, 2 lines max)
+    text = wrap_text(text)
+
+    # Add fade effect: \fad(fade_in_ms, fade_out_ms)
+    fade_effect = f"{{\\fad({fade_in_ms},{fade_out_ms})}}"
+
+    return f"Dialogue: 0,{start_ts},{end_ts},{style},,0,0,0,,{fade_effect}{text}"
