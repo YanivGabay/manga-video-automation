@@ -285,11 +285,14 @@ Respond ONLY with JSON."""
         for page in pages_data:
             page_num = page["page_number"]
             if page_num in narration_map:
-                page["narration"] = narration_map[page_num].get("narration", "")
-                page["suggested_duration"] = narration_map[page_num].get("duration", 4)
+                narration = narration_map[page_num].get("narration", "")
+                page["narration"] = narration
+                # Calculate duration from word count (2.5 words/sec reading speed, 5 sec minimum)
+                word_count = len(narration.split())
+                page["suggested_duration"] = max(5, int(word_count / 2.5))
             else:
                 page["narration"] = page.get("description", "")
-                page["suggested_duration"] = 4
+                page["suggested_duration"] = 5
 
         # Calculate stats
         moods = [p.get("mood", "unknown") for p in pages_data]
