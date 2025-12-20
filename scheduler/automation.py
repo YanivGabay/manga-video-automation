@@ -214,7 +214,7 @@ class MangaAutomation:
     async def add_series_by_name(self, name: str) -> bool:
         """Search for a manga and add it to the tracker"""
         print(f"Searching for '{name}'...")
-        results = await self.mangadex.search(name, limit=5)
+        results = await self.mangadex.search_manga(name, limit=5)
 
         if not results:
             print("No results found")
@@ -223,7 +223,9 @@ class MangaAutomation:
         # Use first result
         manga = results[0]
         manga_id = manga["id"]
-        manga_title = manga.get("title", {}).get("en", name)
+        # Title can be string or dict depending on MangaDex response
+        title = manga.get("title", name)
+        manga_title = title if isinstance(title, str) else title.get("en", name)
 
         self.tracker.load()
         self.tracker.add_series(manga_id, manga_title)
