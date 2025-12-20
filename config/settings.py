@@ -40,3 +40,14 @@ SUBTITLE_BG_OPACITY = 0.7
 
 # Music settings
 MUSIC_VOLUME = 0.3  # Background music volume (0-1)
+
+# YouTube settings
+YT_CLIENT_ID = os.getenv("YT_CLIENT_ID", "")
+YT_CLIENT_SECRET = os.getenv("YT_CLIENT_SECRET", "")
+YT_REFRESH_TOKEN = os.getenv("YT_REFRESH_TOKEN", "")
+CHANNEL_DEFAULT_TAGS = os.getenv("CHANNEL_DEFAULT_TAGS", "manga,anime,shorts")
+
+# Automation settings
+TRACKER_GIST_ID = os.getenv("TRACKER_GIST_ID", "6978cbd031898a9802253015ad1d9ad7")
+CACHE_REPO = os.getenv("CACHE_REPO", "YanivGabay/manga-video-cache")
+GH_TOKEN = os.getenv("GH_TOKEN", "")  # GitHub token for gist/repo access

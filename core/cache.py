@@ -144,6 +144,47 @@ class MangaCache:
         chapters.sort(key=lambda x: float(x) if x.replace(".", "").isdigit() else 0)
         return chapters
 
+    # ==================== Alias Methods (for automation compatibility) ====================
+
+    def get_manga_context(self, manga_id: str) -> Optional[dict]:
+        """Alias for get_context."""
+        return self.get_context(manga_id)
+
+    def save_manga_context(self, manga_id: str, context: dict) -> None:
+        """Alias for save_context."""
+        self.save_context(manga_id, context)
+
+    def save_chapter_summary(self, manga_id: str, chapter_number: int, summary: str) -> None:
+        """Save just a chapter summary (convenience method)."""
+        self.save_chapter(manga_id, str(chapter_number), {"summary": summary})
+
+    def get_chapter_summaries_text(self, manga_id: str, last_n: int = 3) -> str:
+        """
+        Get formatted text of recent chapter summaries for AI prompts.
+
+        Returns string like:
+        PREVIOUS CHAPTERS:
+        Chapter 148: Summary text here...
+        Chapter 149: Summary text here...
+        """
+        context = self.get_context(manga_id)
+        if not context:
+            return ""
+
+        summaries = context.get("chapter_summaries", [])
+        if not summaries:
+            return ""
+
+        recent = summaries[-last_n:]
+        if not recent:
+            return ""
+
+        lines = ["PREVIOUS CHAPTERS:"]
+        for s in recent:
+            lines.append(f"Chapter {s['chapter']}: {s['summary']}")
+
+        return "\n".join(lines)
+
     # ==================== Utility Methods ====================
 
     def list_cached_manga(self) -> list[dict]:
