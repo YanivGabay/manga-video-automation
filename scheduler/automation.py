@@ -92,14 +92,24 @@ class MangaAutomation:
         print("\n[5/7] Getting manga context...")
         manga_context = self.cache.get_manga_context(series["mangadex_id"])
         if not manga_context:
-            # Fetch and cache
-            manga_info = await self.mangadex.get_manga(series["mangadex_id"])
-            manga_context = {
-                "title": series["name"],
-                "genres": manga_info.get("genres", []),
-                "description": manga_info.get("description", ""),
-                "chapter_number": str(chapter_num)
-            }
+            # Fetch via search and cache
+            results = await self.mangadex.search_manga(series["name"], limit=1)
+            if results:
+                manga_info = results[0]
+                manga_context = {
+                    "title": series["name"],
+                    "genres": manga_info.get("genres", []),
+                    "description": manga_info.get("description", ""),
+                    "chapter_number": str(chapter_num)
+                }
+            else:
+                # Fallback to basic context
+                manga_context = {
+                    "title": series["name"],
+                    "genres": [],
+                    "description": "",
+                    "chapter_number": str(chapter_num)
+                }
             self.cache.save_manga_context(series["mangadex_id"], manga_context)
         else:
             manga_context["chapter_number"] = str(chapter_num)
