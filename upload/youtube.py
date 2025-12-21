@@ -63,7 +63,7 @@ class YouTubeUploader:
         tags: Optional[list[str]] = None,
         category_id: str = "24",  # Entertainment
         privacy: str = "public",
-        is_short: bool = True
+        is_short: bool = False
     ) -> dict:
         """
         Upload video to YouTube.

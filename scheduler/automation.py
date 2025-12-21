@@ -157,12 +157,21 @@ class MangaAutomation:
             raise Exception("Failed to build video")
 
         # Prepare metadata
-        title = f"{series['name']} Chapter {chapter_num} Recap"
-        description = f"""Recap of {series['name']} Chapter {chapter_num}
+        title = f"{series['name']} Ch. {int(chapter_num)} - Manga Recap"
 
-{analysis.get('pages', [{}])[0].get('narration', '')}
+        # Build description from narration highlights
+        narrations = [p.get('narration', '') for p in analysis.get('pages', [])[:5] if p.get('narration')]
+        summary = ' '.join(narrations)[:400] + '...' if narrations else ''
 
-#Manga #Anime #{series['name'].replace(' ', '')} #Recap #Shorts"""
+        manga_tag = series['name'].replace(' ', '')
+        description = f"""{series['name']} Chapter {int(chapter_num)} - Full chapter recap with narration!
+
+{summary}
+
+📖 Support the official release!
+🔔 Subscribe for daily manga recaps!
+
+#Manga #Anime #{manga_tag} #MangaRecap #MangaTok #{manga_tag}Chapter{int(chapter_num)}"""
 
         # Upload to YouTube
         print("\n[8/8] Uploading to YouTube...")
@@ -170,7 +179,8 @@ class MangaAutomation:
             video_path=video_path,
             title=title,
             description=description,
-            tags=[series['name'], f"chapter {chapter_num}", "manga recap"]
+            tags=[series['name'], f"chapter {int(chapter_num)}", "manga recap", "anime", manga_tag],
+            is_short=False
         )
 
         # Record upload and advance
