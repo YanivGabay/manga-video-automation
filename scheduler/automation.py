@@ -140,7 +140,7 @@ class MangaAutomation:
                 summary[:500]
             )
 
-        # Get background music (using local Pixabay tracks - copyright free)
+        # Get background music (Kevin MacLeod - CC BY 4.0, 100% copyright safe)
         print("\n[7/7] Building video...")
         mood = analysis.get("dominant_mood", "neutral")
         music_path = await self.music.get_music_for_mood(mood)

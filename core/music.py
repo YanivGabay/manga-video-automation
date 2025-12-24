@@ -120,20 +120,39 @@ class MusicFetcher:
         return None
 
     def _find_local_music(self, mood: str) -> Optional[Path]:
-        """Find local music file matching mood"""
+        """Find local music file matching mood - uses Kevin MacLeod CC BY 4.0 tracks"""
         if not self.local_music_dir.exists():
             return None
 
-        # Look for files with mood in name
+        # Map moods to local file prefixes/names
+        mood_to_file = {
+            "action": ["action_", "Volatile", "epic_", "Heroic"],
+            "tense": ["dark_", "Darkest", "action_"],
+            "dark": ["dark_", "Darkest"],
+            "epic": ["epic_", "Heroic", "action_"],
+            "sad": ["Dreams", "Inspired"],
+            "romantic": ["Dreams", "Inspired", "Wholesome"],
+            "happy": ["Wholesome", "Inspired"],
+            "comedic": ["Wholesome"],
+            "calm": ["Dreams", "Inspired"],
+            "mysterious": ["dark_", "Dreams"],
+        }
+
+        search_patterns = mood_to_file.get(mood, [])
+
+        # Look for files matching mood patterns
         for ext in ["mp3", "wav", "m4a", "ogg"]:
-            for f in self.local_music_dir.glob(f"*{mood}*.{ext}"):
-                return f
+            for f in self.local_music_dir.glob(f"*.{ext}"):
+                for pattern in search_patterns:
+                    if pattern.lower() in f.name.lower():
+                        return f
 
         # Fallback to any music file
         for ext in ["mp3", "wav", "m4a", "ogg"]:
             files = list(self.local_music_dir.glob(f"*.{ext}"))
             if files:
-                return files[0]
+                import random
+                return random.choice(files)
 
         return None
 
