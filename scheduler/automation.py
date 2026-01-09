@@ -178,7 +178,7 @@ class MangaAutomation:
             raise Exception("Failed to build video")
 
         # Prepare metadata
-        title = f"{series['name']} Ch. {int(chapter_num)} - Manga Recap"
+        title = f"{series['name']} Ch. {int(chapter_num)} - Manga Recap with Voice"
 
         # Build description from narration highlights
         narrations = [p.get('narration', '') for p in analysis.get('pages', [])[:5] if p.get('narration')]
