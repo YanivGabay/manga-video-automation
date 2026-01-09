@@ -15,6 +15,7 @@ from core.openrouter import OpenRouterClient
 from core.music import MusicFetcher
 from core.video import VideoBuilder
 from core.cache import MangaCache
+from core.tts import NarrationGenerator
 
 
 class MangaRecapPipeline:
@@ -27,6 +28,7 @@ class MangaRecapPipeline:
         self.music = MusicFetcher()
         self.video = VideoBuilder(output_dir=self.output_dir)
         self.cache = MangaCache()
+        self.tts = NarrationGenerator(voice="guy", rate="+0%")
 
     async def search_manga(self, title: str) -> list[dict]:
         """Search for manga by title"""
@@ -172,9 +174,29 @@ Write it as a brief story recap, not a list. Respond with just the summary."""
         self,
         analysis: dict,
         music_path: Optional[Path] = None,
-        output_name: str = "manga_recap.mp4"
+        output_name: str = "manga_recap.mp4",
+        enable_tts: bool = True
     ) -> Optional[Path]:
-        """Build the final video"""
+        """Build the final video with optional voice narration"""
+        # Generate voice narration if enabled
+        if enable_tts:
+            print("Generating voice narration...")
+            narration_dir = self.output_dir / "narration"
+            try:
+                analysis["pages"] = await self.tts.generate_narration_audio(
+                    pages_data=analysis["pages"],
+                    output_dir=narration_dir,
+                    use_mood_voice=True,
+                    consistent_voice=True
+                )
+                print(f"  Voice narration generated for {sum(1 for p in analysis['pages'] if p.get('narration_audio'))} pages")
+            except ImportError as e:
+                print(f"  TTS not available: {e}")
+                print("  Continuing without voice narration...")
+            except Exception as e:
+                print(f"  TTS failed: {e}")
+                print("  Continuing without voice narration...")
+
         print("Building video...")
         video_path = self.video.build_manga_video(
             pages_data=analysis["pages"],

@@ -17,6 +17,10 @@ from .effects import (
     generate_subtitle_style, create_subtitle_event
 )
 
+# Volume levels for audio mixing
+NARRATION_VOLUME = 1.0  # Narration at full volume
+MUSIC_VOLUME_WITH_NARRATION = 0.15  # Music quieter when narration plays
+
 
 class VideoBuilder:
     def __init__(self, output_dir: Optional[Path] = None):
@@ -126,22 +130,6 @@ class VideoBuilder:
         cmd = [
             "ffmpeg", "-y",
             "-i", str(video_path),
-            "-i", str(music_path),
-            "-filter_complex",
-            f"[1:a]volume={volume},aloop=loop=-1:size=2e+09[a];[a]atrim=0:$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 {video_path})[music]",
-            "-map", "0:v",
-            "-map", "[music]",
-            "-c:v", "copy",
-            "-c:a", "aac",
-            "-b:a", "192k",
-            "-shortest",
-            str(output_path)
-        ]
-
-        # Simpler approach - just mix the audio
-        cmd = [
-            "ffmpeg", "-y",
-            "-i", str(video_path),
             "-stream_loop", "-1",
             "-i", str(music_path),
             "-filter_complex", f"[1:a]volume={volume}[a]",
@@ -159,6 +147,181 @@ class VideoBuilder:
             return result.returncode == 0
         except Exception as e:
             print(f"Error adding music: {e}")
+            return False
+
+    def create_narration_track(
+        self,
+        pages_data: list[dict],
+        output_path: Path,
+        total_duration: float
+    ) -> Optional[Path]:
+        """
+        Create a single narration audio track from per-page audio files.
+
+        Places each narration at the correct timestamp based on page timing.
+
+        Args:
+            pages_data: Pages with narration_audio and suggested_duration
+            output_path: Where to save the combined audio
+            total_duration: Total video duration in seconds
+
+        Returns:
+            Path to combined audio file, or None if no narrations
+        """
+        # Collect narration files with their start times
+        narrations = []
+        current_time = 0.0
+
+        for page in pages_data:
+            page_duration = page.get("suggested_duration", DEFAULT_PAGE_DURATION)
+            narration_audio = page.get("narration_audio")
+
+            if narration_audio and Path(narration_audio).exists():
+                narrations.append({
+                    "file": narration_audio,
+                    "start": current_time,
+                    "duration": page.get("narration_duration", page_duration)
+                })
+
+            current_time += page_duration
+
+        if not narrations:
+            print("  No narration audio files found")
+            return None
+
+        # Build FFmpeg command to mix all narrations at correct times
+        inputs = []
+        filter_parts = []
+
+        for i, narr in enumerate(narrations):
+            inputs.extend(["-i", narr["file"]])
+            delay_ms = int(narr["start"] * 1000)
+            # Add delay to position audio at correct time
+            filter_parts.append(f"[{i}:a]adelay={delay_ms}|{delay_ms},volume={NARRATION_VOLUME}[a{i}]")
+
+        # Mix all delayed audio streams
+        mix_inputs = "".join(f"[a{i}]" for i in range(len(narrations)))
+        filter_parts.append(
+            f"{mix_inputs}amix=inputs={len(narrations)}:duration=longest:normalize=0[out]"
+        )
+
+        filter_complex = ";".join(filter_parts)
+
+        cmd = [
+            "ffmpeg", "-y",
+            *inputs,
+            "-filter_complex", filter_complex,
+            "-map", "[out]",
+            "-t", str(total_duration),
+            "-c:a", "aac",
+            "-b:a", "192k",
+            str(output_path)
+        ]
+
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+            if result.returncode == 0:
+                print(f"  Created narration track: {len(narrations)} segments")
+                return output_path
+            else:
+                print(f"  FFmpeg error creating narration track: {result.stderr[:200]}")
+                return None
+        except Exception as e:
+            print(f"  Error creating narration track: {e}")
+            return None
+
+    def add_audio_tracks(
+        self,
+        video_path: Path,
+        output_path: Path,
+        narration_path: Optional[Path] = None,
+        music_path: Optional[Path] = None,
+        music_volume: float = MUSIC_VOLUME,
+        music_volume_with_narration: float = MUSIC_VOLUME_WITH_NARRATION
+    ) -> bool:
+        """
+        Add narration and/or music to video.
+
+        When both are present, music volume is reduced to not overpower narration.
+
+        Args:
+            video_path: Input video file
+            output_path: Where to save the output
+            narration_path: Optional narration audio track
+            music_path: Optional background music
+            music_volume: Music volume when no narration
+            music_volume_with_narration: Music volume when narration plays
+
+        Returns:
+            True if successful
+        """
+        has_narration = narration_path and narration_path.exists()
+        has_music = music_path and music_path.exists()
+
+        if not has_narration and not has_music:
+            # No audio to add - just copy video
+            import shutil
+            shutil.copy(video_path, output_path)
+            return True
+
+        if has_narration and has_music:
+            # Mix both: narration at full volume, music ducked
+            cmd = [
+                "ffmpeg", "-y",
+                "-i", str(video_path),
+                "-i", str(narration_path),
+                "-stream_loop", "-1",
+                "-i", str(music_path),
+                "-filter_complex",
+                f"[1:a]volume={NARRATION_VOLUME}[narr];"
+                f"[2:a]volume={music_volume_with_narration}[music];"
+                f"[narr][music]amix=inputs=2:duration=first:normalize=0[aout]",
+                "-map", "0:v",
+                "-map", "[aout]",
+                "-c:v", "copy",
+                "-c:a", "aac",
+                "-b:a", "192k",
+                "-shortest",
+                str(output_path)
+            ]
+        elif has_narration:
+            # Only narration
+            cmd = [
+                "ffmpeg", "-y",
+                "-i", str(video_path),
+                "-i", str(narration_path),
+                "-map", "0:v",
+                "-map", "1:a",
+                "-c:v", "copy",
+                "-c:a", "aac",
+                "-b:a", "192k",
+                "-shortest",
+                str(output_path)
+            ]
+        else:
+            # Only music
+            cmd = [
+                "ffmpeg", "-y",
+                "-i", str(video_path),
+                "-stream_loop", "-1",
+                "-i", str(music_path),
+                "-filter_complex", f"[1:a]volume={music_volume}[a]",
+                "-map", "0:v",
+                "-map", "[a]",
+                "-c:v", "copy",
+                "-c:a", "aac",
+                "-b:a", "192k",
+                "-shortest",
+                str(output_path)
+            ]
+
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+            if result.returncode != 0:
+                print(f"  FFmpeg error: {result.stderr[:300]}")
+            return result.returncode == 0
+        except Exception as e:
+            print(f"Error adding audio: {e}")
             return False
 
     def add_subtitles(
@@ -222,7 +385,8 @@ class VideoBuilder:
             "file_path": str,
             "suggested_duration": float,
             "mood": str,
-            "dialogue": list[str]
+            "narration": str,
+            "narration_audio": str (optional, path to TTS audio)
         }
         """
         print(f"Building video from {len(pages_data)} pages...")
@@ -267,6 +431,8 @@ class VideoBuilder:
             print("Error: No clips created")
             return None
 
+        total_duration = current_time
+
         # Step 2: Concatenate clips
         print("Concatenating clips...")
         concat_path = self.output_dir / "concat_temp.mp4"
@@ -287,17 +453,40 @@ class VideoBuilder:
             if self.add_subtitles(current_video, subs_path, subs_video):
                 current_video = subs_video
 
-        # Step 4: Add music if provided
-        final_path = self.output_dir / output_name
-        if music_path and music_path.exists():
-            print("Adding background music...")
-            if self.add_music(current_video, music_path, final_path):
-                # Clean up all temp files
-                self._cleanup_temp_files(clips, concat_path, subs_video, subs_path)
-                print(f"Video created: {final_path}")
-                return final_path
+        # Step 4: Create narration track if we have TTS audio
+        narration_path = None
+        has_narration_audio = any(p.get("narration_audio") for p in pages_data)
+        if has_narration_audio:
+            print("Creating narration audio track...")
+            narration_path = self.output_dir / "narration_combined.aac"
+            narration_path = self.create_narration_track(
+                pages_data=pages_data,
+                output_path=narration_path,
+                total_duration=total_duration
+            )
 
-        # No music - just rename
+        # Step 5: Add audio (narration and/or music)
+        final_path = self.output_dir / output_name
+        print("Adding audio tracks...")
+        if self.add_audio_tracks(
+            video_path=current_video,
+            output_path=final_path,
+            narration_path=narration_path,
+            music_path=music_path
+        ):
+            # Clean up all temp files
+            temp_files = [concat_path, subs_video, subs_path, narration_path]
+            self._cleanup_temp_files(clips, *[f for f in temp_files if f])
+            # Also clean up individual narration files
+            narration_dir = self.output_dir / "narration"
+            if narration_dir.exists():
+                for f in narration_dir.glob("*.mp3"):
+                    f.unlink()
+            print(f"Video created: {final_path}")
+            return final_path
+
+        # Fallback - just rename current video
+        print("Warning: Audio mixing failed, using video without audio")
         current_video.rename(final_path)
         self._cleanup_temp_files(clips, concat_path, subs_video, subs_path)
 

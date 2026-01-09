@@ -15,6 +15,7 @@ from core.openrouter import OpenRouterClient
 from core.video import VideoBuilder
 from core.music import MusicFetcher
 from core.cache import MangaCache
+from core.tts import NarrationGenerator
 from upload.youtube import YouTubeUploader
 from config.settings import OUTPUT_DIR
 
@@ -38,6 +39,7 @@ class MangaAutomation:
         self.video = VideoBuilder()
         self.music = MusicFetcher()
         self.cache = MangaCache()
+        self.tts = NarrationGenerator(voice="guy", rate="+0%")
         self.youtube = YouTubeUploader()
 
     async def run_daily(self) -> Optional[dict]:
@@ -141,9 +143,28 @@ class MangaAutomation:
             )
 
         # Get background music (Kevin MacLeod - CC BY 4.0, 100% copyright safe)
-        print("\n[7/7] Building video...")
+        print("\n[7/8] Building video...")
         mood = analysis.get("dominant_mood", "neutral")
         music_path = await self.music.get_music_for_mood(mood)
+
+        # Generate voice narration
+        print("  Generating voice narration...")
+        narration_dir = OUTPUT_DIR / "narration"
+        try:
+            analysis["pages"] = await self.tts.generate_narration_audio(
+                pages_data=analysis["pages"],
+                output_dir=narration_dir,
+                use_mood_voice=True,
+                consistent_voice=True
+            )
+            narration_count = sum(1 for p in analysis["pages"] if p.get("narration_audio"))
+            print(f"  Voice narration generated for {narration_count} pages")
+        except ImportError as e:
+            print(f"  TTS not available: {e}")
+            print("  Continuing without voice narration...")
+        except Exception as e:
+            print(f"  TTS failed: {e}")
+            print("  Continuing without voice narration...")
 
         # Build video
         output_name = f"{series['name'].lower().replace(' ', '-')}-ch{chapter_num}.mp4"
