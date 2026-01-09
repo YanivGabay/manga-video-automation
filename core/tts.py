@@ -20,6 +20,9 @@ MOOD_MAPPING = {
     "neutral": "neutral",
 }
 
+# Reliable voices that work consistently (some Edge TTS voices are unreliable)
+RELIABLE_VOICES = ["guy", "jenny", "aria", "ryan", "sonia"]
+
 
 class NarrationGenerator:
     """
@@ -112,11 +115,24 @@ class NarrationGenerator:
         output_dir.mkdir(parents=True, exist_ok=True)
 
         # Determine dominant mood for consistent voice selection
+        # Use only reliable voices to avoid TTS failures
         if consistent_voice and use_mood_voice:
             moods = [p.get("mood", "neutral") for p in pages_data]
             dominant_mood = max(set(moods), key=moods.count)
             mapped_mood = MOOD_MAPPING.get(dominant_mood, "neutral")
-            chapter_tts = self._rotator.get_tts_for_mood(mapped_mood)
+
+            # Get voice for mood, but filter to reliable voices only
+            mood_voice = self._rotator.get_voice_for_mood(mapped_mood)
+            if mood_voice not in RELIABLE_VOICES:
+                # Fall back to a reliable voice based on mood
+                if mapped_mood in ["dramatic", "suspense", "mysterious"]:
+                    mood_voice = "aria"  # Expressive, dramatic
+                elif mapped_mood in ["happy", "heartwarming"]:
+                    mood_voice = "jenny"  # Friendly, warm
+                else:
+                    mood_voice = "guy"  # Natural, versatile
+
+            chapter_tts = self._tts_class(voice=mood_voice)
             logger.info(f"Using voice {chapter_tts.voice} for mood '{dominant_mood}'")
         else:
             chapter_tts = self._tts_class(voice=self.default_voice)
@@ -144,6 +160,15 @@ class NarrationGenerator:
 
                 page["narration_audio"] = str(result.audio_path)
                 page["narration_duration"] = result.duration
+
+                # IMPORTANT: Adjust page duration to fit the narration audio
+                # Add 0.5s buffer so narration doesn't feel rushed
+                min_duration = result.duration + 0.5
+                current_duration = page.get("suggested_duration", 4.0)
+                if min_duration > current_duration:
+                    page["suggested_duration"] = min_duration
+                    logger.debug(f"Page {i}: extended duration {current_duration:.1f}s -> {min_duration:.1f}s for narration")
+
                 narration_count += 1
                 logger.debug(f"Generated narration {i}: {result.duration:.1f}s")
 
@@ -152,7 +177,11 @@ class NarrationGenerator:
                 page["narration_audio"] = None
                 page["narration_duration"] = 0.0
 
+        # Calculate total duration adjustment
+        total_duration = sum(p.get("suggested_duration", 4.0) for p in pages_data)
         logger.info(f"Generated {narration_count} narration audio files")
+        logger.info(f"Total video duration after TTS adjustment: {total_duration:.1f}s")
+        print(f"  Total video duration adjusted to: {total_duration:.1f}s")
         return pages_data
 
     async def concatenate_narration(

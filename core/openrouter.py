@@ -249,28 +249,35 @@ Description: {manga_context.get('description', 'No description available')}
             manga_info += f"\n{previous_summaries}\n"
 
         narration_prompt = f"""{manga_info}
-You are writing narration for a Chapter {manga_context.get('chapter_number', '1')} video recap. Viewers will see each manga page while hearing your narration.
+You are the narrator for a manga video. Write voice-over narration that viewers will HEAR while seeing each manga page.
 
-Here's what happens on each page:
+PAGE DESCRIPTIONS (what's shown visually):
 {chapter_context}
 
-Write narration for each page (1-2 sentences, max 25 words).
+NARRATION RULES:
+- Write as a storyteller narrating the action - NOT describing what's "on the page"
+- NEVER say "on this page", "we see", "this panel shows", "the page depicts"
+- Narrate the STORY as it happens: "Denji lunges forward!" not "On this page, Denji is shown lunging"
+- Use present tense, active voice: "The demon strikes!" not "The demon is striking"
+- Include specific details: character names, exact amounts, key dialogue
+- 1-2 sentences per page, max 25 words
+- Match the emotional tone (dramatic, tense, comedic, etc.)
 
-Your narration should:
-- Include the SPECIFIC details that make each page memorable (exact amounts, specific actions, what was said)
-- Use character names from the description - never "a man" or "the character"
-- Keep shocking or important details - don't generalize them away
-- Match the tone of what's shown
+GOOD: "Denji transforms into Chainsaw Man, his body erupting with chains!"
+BAD: "On this page, we see Denji transforming into his chainsaw form."
+
+GOOD: "Power grins wickedly. 'I'll take that head of yours!'"
+BAD: "This panel shows Power making a threatening statement."
 
 Respond with JSON array:
 [
   {{"page": 1, "narration": "...", "duration": 4}},
-  {{"page": 2, "narration": "...", "duration": 4}},
+  {{"page": 2, "narration": "...", "duration": 5}},
   ...
 ]
 
-Duration: 3-6 seconds based on content complexity.
-Respond ONLY with JSON."""
+Duration: 4-7 seconds based on narration length.
+Respond ONLY with valid JSON."""
 
         # Scale tokens based on number of pages (need ~100 tokens per page for narration)
         tokens_needed = max(2000, 100 * len(pages_data))
